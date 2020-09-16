@@ -28,29 +28,17 @@ provision_sinad () {
         fi
     done
     # Get realm
-    read -s -p 'Type realm name (eg. iorchard.lan): ' REALM
+    read -p 'Type realm name (eg. iorchard.lan): ' REALM
     echo
     # Get domain from realm
     DOMAIN=${REALM%.*}
     # Get Sinad host IP address.
-    read -s -p 'Type Sinad host IP address.' HOST_IP
+    read -p 'Type Sinad host IP address: ' HOST_IP
     echo
     samba-tool domain provision --use-rfc2307 --realm=$REALM --domain=$DOMAIN \
         --host-name=$HOSTNAME --host-ip=$HOST_IP --adminpass=$ADMINPW1 \
         --dns-backend=SAMBA_INTERNAL --server-role=dc
     cp /var/lib/samba/private/krb5.conf /etc/
-    # Remove ip address from DNS except $HOST_IP.
-    set +e
-    IP_LIST=($(hostname -i))
-    for i in ${IP_LIST[*}}
-    do
-        if [ x"${i}" != x"${HOST_IP}" ]
-        then
-            samba-tool dns delete $HOSTNAME $REALM $HOSTNAME A $i -U administrator
-            samba-tool dns delete $HOSTNAME $REALM $REALM A $i -U administrator
-        fi
-    done
-    set -e
     # Create public/profiles/users folder in /srv/samba
     mkdir -p /srv/samba/{public,profiles,users}
     # Add some lines to smb.conf
@@ -72,13 +60,26 @@ provision_sinad () {
 
 EOF
     sed -Ei '/idmap_ldb:/r /tmp/smb.tmp' /etc/samba/smb.conf
-    smbcontrol all reload-config
+    #smbcontrol all reload-config
     # remove stone.
     clear_holding_stone
+    sleep 7
     # Change /etc/resolv.conf
     echo -e "search $REALM\nnameserver $HOST_IP" > /etc/resolv.conf
     # Update pam auth
-    pam-auth-update --enable mkhomedir unix winbind
+    pam-auth-update --enable mkhomedir unix winbind 2>/dev/null
+    # Remove ip address from DNS except $HOST_IP.
+    set +e
+    IP_LIST=($(hostname -I))
+    for i in ${IP_LIST[*]}
+    do
+        if [ x"${i}" != x"${HOST_IP}" ]
+        then
+            samba-tool dns delete $HOSTNAME $REALM $HOSTNAME A $i -U administrator
+            samba-tool dns delete $HOSTNAME $REALM $REALM A $i -U administrator
+        fi
+    done
+    set -e
 }
 run_sinad () {
     while :

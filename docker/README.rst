@@ -26,7 +26,8 @@ Run sinad container with --cap-add SYS_ADMIN option.::
 
    $ docker run --cap-add SYS_ADMIN --detach --name sinad --hostname sinad \
       --publish-all --network=host \
-      --volume etc_samba:/etc/samba --volume var_lib_samba:/var/lib/samba \   
+      --volume etc_samba:/etc/samba --volume var_lib_samba:/var/lib/samba \ 
+      --volume srv_samba:/srv/samba \
       sinad
 
 
