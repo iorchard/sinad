@@ -7,13 +7,52 @@ execute_sinad () {
 }
 clear_holding_stone () {
     # remove config stone.
-    rm -f /tmp/hold_to_run
+    rm -f /tmp/holding_stone
 }
 provision_sinad () {
     mv /etc/krb5.conf /etc/krb5.conf.orig
     mv /etc/samba/smb.conf /etc/samba/smb.conf.orig
-    samba-tool domain provision --use-rfc2307 --interactive
+    # Get samba admin password.
+    while :
+    do
+        read -s -p 'Type samba admin password: ' ADMINPW1
+        echo
+        read -s -p 'Type samba admin password again: ' ADMINPW2
+        echo
+        if [ x"$ADMINPW1" == x"$ADMINPW2" ]
+        then
+            break
+        else
+            echo "Passwords are not matched. Try again."
+            sleep 0.5
+        fi
+    done
+    # Get realm
+    read -s -p 'Type realm name (eg. iorchard.lan): ' REALM
+    echo
+    # Get domain from realm
+    DOMAIN=${REALM%.*}
+    # Get Sinad host IP address.
+    read -s -p 'Type Sinad host IP address.' HOST_IP
+    echo
+    samba-tool domain provision --use-rfc2307 --realm=$REALM --domain=$DOMAIN \
+        --host-name=$HOSTNAME --host-ip=$HOST_IP --adminpass=$ADMINPW1 \
+        --dns-backend=SAMBA_INTERNAL --server-role=dc
     cp /var/lib/samba/private/krb5.conf /etc/
+    # Remove ip address from DNS except $HOST_IP.
+    set +e
+    IP_LIST=($(hostname -i))
+    for i in ${IP_LIST[*}}
+    do
+        if [ x"${i}" != x"${HOST_IP}" ]
+        then
+            samba-tool dns delete $HOSTNAME $REALM $HOSTNAME A $i -U administrator
+            samba-tool dns delete $HOSTNAME $REALM $REALM A $i -U administrator
+        fi
+    done
+    set -e
+    # Create public/profiles/users folder in /srv/samba
+    mkdir -p /srv/samba/{public,profiles,users}
     # Add some lines to smb.conf
     cat <<EOF > /tmp/smb.tmp
         # added
@@ -23,33 +62,28 @@ provision_sinad () {
         winbind nss info = rfc2307
         winbind enum users = yes
         winbind enum groups = yes
+[users]
+	path = /srv/samba/users
+	read only = no
+
+[profiles]
+	path = /srv/samba/profiles
+	read only = no
+
 EOF
     sed -Ei '/idmap_ldb:/r /tmp/smb.tmp' /etc/samba/smb.conf
-    if [ -f /var/run/samba/samba.pid ]
-    then
-        /bin/kill -HUP $(cat /var/run/samba/samba.pid)
-    fi
+    smbcontrol all reload-config
     # remove stone.
     clear_holding_stone
     # Change /etc/resolv.conf
-    # get IP address of me.
-    IP=$(hostname -i)
-    # Get DOMAIN of me
-    while :
-    do
-        if ps x |grep samba |grep -qv grep
-        then
-            DOMAIN=$(samba-tool domain info $IP |grep Domain|cut -d':' -f2|tr -d ' ')
-            echo -e "search $DOMAIN\nnameserver $IP" > /etc/resolv.conf
-            break
-        fi
-        sleep 10
-    done
+    echo -e "search $REALM\nnameserver $HOST_IP" > /etc/resolv.conf
+    # Update pam auth
+    pam-auth-update --enable mkhomedir unix winbind
 }
 run_sinad () {
     while :
     do
-        if [ -f /tmp/hold_to_run ]
+        if [ -f /tmp/holding_stone ]
         then
             sleep 5
         else

@@ -13,10 +13,11 @@ Build sinad container image.::
 Prepare
 ---------
 
-Create two volumes.::
+Create three volumes.::
 
-   $ docker volume create etc_samba
-   $ docker volume create var_lib_samba
+   $ docker volume create etc_samba       # for samba config files
+   $ docker volume create var_lib_samba   # for samba databases
+   $ docker volume create srv_samba       # for samba share folders
 
 Run
 ----
@@ -31,6 +32,10 @@ Run sinad container with --cap-add SYS_ADMIN option.::
 
 Provision
 ------------
+
+If this is the first time to run sinad, you need to provision the sinad.
+If you've already done it before, you do not need to provision it since
+your settings are preserved in docker volumes.
 
 Provision sinad.::
 
@@ -49,8 +54,5 @@ Status
 Check the status of sinad.::
 
    $ docker exec sinad /sinad.sh --status
-
-
-
 
 
