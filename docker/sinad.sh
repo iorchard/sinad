@@ -10,8 +10,6 @@ clear_holding_stone () {
     rm -f /tmp/holding_stone
 }
 provision_sinad () {
-    mv /etc/krb5.conf /etc/krb5.conf.orig
-    mv /etc/samba/smb.conf /etc/samba/smb.conf.orig
     # Get samba admin password.
     while :
     do
@@ -35,15 +33,17 @@ provision_sinad () {
     # Get Sinad host IP address.
     read -p 'Type Sinad host IP address: ' HOST_IP
     echo
+    # Backup original config files.
+    mv /etc/krb5.conf /etc/krb5.conf.orig
+    mv /etc/samba/smb.conf /etc/samba/smb.conf.orig
+    # Provision
     samba-tool domain provision --use-rfc2307 --realm=$REALM --domain=$DOMAIN \
         --host-name=$HOSTNAME --host-ip=$HOST_IP --adminpass=$ADMINPW1 \
         --dns-backend=SAMBA_INTERNAL --server-role=dc
     cp /var/lib/samba/private/krb5.conf /etc/
-    # Create public/profiles/users folder in /srv/samba
-    mkdir -p /srv/samba/{public,profiles,users}
     # Add some lines to smb.conf
     cat <<EOF > /tmp/smb.tmp
-        # added
+# Beginning of additions
         template shell = /bin/bash
         winbind use default domain = true
         winbind offline logon = false
@@ -57,10 +57,10 @@ provision_sinad () {
 [profiles]
 	path = /srv/samba/profiles
 	read only = no
+# End of additions
 
 EOF
     sed -Ei '/idmap_ldb:/r /tmp/smb.tmp' /etc/samba/smb.conf
-    #smbcontrol all reload-config
     # remove stone.
     clear_holding_stone
     sleep 7
@@ -69,6 +69,7 @@ EOF
     # Update pam auth
     pam-auth-update --enable mkhomedir unix winbind 2>/dev/null
     # Remove ip address from DNS except $HOST_IP.
+    echo "Remove ip addresses from DNS except $HOST_IP."
     set +e
     IP_LIST=($(hostname -I))
     for i in ${IP_LIST[*]}
@@ -80,6 +81,15 @@ EOF
         fi
     done
     set -e
+    # Grant SeDiskOperatorPrivilege to BUILTIN\Administrators.
+    echo "Grant SeDiskOperatorPrivilege to BUILTIN\Administrators."
+    net rpc rights grant "BUILTIN\Administrators" SeDiskOperatorPrivilege \
+        -U administrator
+    # Create profiles/users folder in /srv/samba
+    mkdir -p /srv/samba/{profiles,users}
+    chown root:"Domain Admins" /srv/samba/{profiles,users}
+    chmod 0770 /srv/samba/{profiles,users}
+    reload_sinad
 }
 run_sinad () {
     while :
@@ -93,17 +103,45 @@ run_sinad () {
     done
     /usr/sbin/samba --foreground --no-process-group --debuglevel=5
 }
+reload_sinad () {
+    smbcontrol all reload-config
+}
 status_sinad () {
     samba-tool domain level show
 }
+user_sinad () {
+    read -p 'Type the userid: ' USERID
+    read -p 'Type the user surname: ' SURNAME
+    read -p 'Type the user givenname: ' GIVENNAME
+    samba-tool user create $USERID \
+      --given-name="$GIVENNAME" --surname="$SURNAME" \
+      --description="$SURNAME $GIVENNAME account"
+    echo "Create $USERID home folder."
+    mkdir -p /srv/samba/users/$USERID
+    chown 3000000:users /srv/samba/users/$USERID
+    # Get DOMAIN
+    DOMAIN=$(samba-tool domain info sinad |grep 'Netbios domain' |cut -d ':' -f2 |tr -d '[:space:]')
+    # setfacl
+    setfacl -x "u:root" /srv/samba/users/$USERID
+    setfacl -x "d:u:root" /srv/samba/users/$USERID
+    setfacl -m "u:${DOMAIN}\\${USERID}:rwx" /srv/samba/users/$USERID
+    setfacl -m "g:BUILTIN\\Administrators:rwx" /srv/samba/users/$USERID
+    setfacl -m "g:${DOMAIN}\\${USERID}:rwx" /srv/samba/users/$USERID
+    setfacl -m "d:u:3000000:rwx" /srv/samba/users/$USERID
+    setfacl -m "d:u:${DOMAIN}\\${USERID}:rwx" /srv/samba/users/$USERID
+    setfacl -m "d:g:BUILTIN\\Administrators:rwx" /srv/samba/users/$USERID
+    setfacl -m "d:g:${DOMAIN}\\${USERID}:rwx" /srv/samba/users/$USERID
+}
 USAGE() {
-    echo "Usage: $0 {-h|-p|-s}" 1>&2
+    echo "Usage: $0 {-h|-e|-p|-r|-R|-s|-u}" 1>&2
     echo " "
     echo "  -h  --help          Display this help message."
     echo "  -e  --execute       Execute command."
     echo "  -p  --provision     Provision Sinad."
     echo "  -r  --run           Run Sinad."
+    echo "  -R  --reload        Reload Sinad config."
     echo "  -s  --status        Show the status of Sinad."
+    echo "  -u  --user          Create a user."
 }
 
 if [ $# -lt 1 ]
@@ -119,7 +157,7 @@ while :
 do
     case "$OPT" in
         -e | --execute)
-            execute_sinad $1
+            execute_sinad $@
             break
             ;;
         -p | --provision)
@@ -130,8 +168,16 @@ do
             run_sinad
             break
             ;;
+        -R | --reload)
+            reload_sinad
+            break
+            ;;
         -s | --status)
             status_sinad
+            break
+            ;;
+        -u | --user)
+            user_sinad
             break
             ;;
         *)
