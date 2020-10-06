@@ -6,8 +6,8 @@ RUN         apt update && \
                 ldb-tools acl less vim-tiny && \
             touch /tmp/holding_stone
 
-COPY        sinad.sh /
+COPY        sinad /usr/local/bin/
 COPY        nsswitch.conf /etc/
 
-ENTRYPOINT  ["/sinad.sh"]
+ENTRYPOINT  ["sinad"]
 CMD         ["--run"]
