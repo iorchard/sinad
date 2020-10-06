@@ -106,9 +106,6 @@ run_sinad () {
 reload_sinad () {
     smbcontrol all reload-config
 }
-status_sinad () {
-    samba-tool domain level show
-}
 user_sinad () {
     read -p 'Type the userid: ' USERID
     read -p 'Type the user surname: ' SURNAME
@@ -133,14 +130,14 @@ user_sinad () {
     setfacl -m "d:g:${DOMAIN}\\${USERID}:rwx" /srv/samba/users/$USERID
 }
 USAGE() {
-    echo "Usage: $0 {-h|-e|-p|-r|-R|-s|-u}" 1>&2
+    echo "Usage: $0 {-h|-c|-e|-p|-r|-R|-u}" 1>&2
     echo " "
     echo "  -h  --help          Display this help message."
+    echo "  -c  --clear         Clear the holding stone."
     echo "  -e  --execute       Execute command."
     echo "  -p  --provision     Provision Sinad."
     echo "  -r  --run           Run Sinad."
     echo "  -R  --reload        Reload Sinad config."
-    echo "  -s  --status        Show the status of Sinad."
     echo "  -u  --user          Create a user."
 }
 
@@ -156,6 +153,10 @@ shift
 while :
 do
     case "$OPT" in
+        -c | --clear)
+            clear_holding_stone
+            break
+            ;;
         -e | --execute)
             execute_sinad $@
             break
@@ -170,10 +171,6 @@ do
             ;;
         -R | --reload)
             reload_sinad
-            break
-            ;;
-        -s | --status)
-            status_sinad
             break
             ;;
         -u | --user)
