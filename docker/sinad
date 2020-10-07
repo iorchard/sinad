@@ -3,11 +3,28 @@
 set -e -o pipefail
 
 execute_sinad () {
-    samba-tool $@
+    samba-tool "$@"
 }
 clear_holding_stone () {
     # remove config stone.
     rm -f /tmp/holding_stone
+}
+check_provisioned () {
+    # See if there is sam.ldb in /var/lib/samba/private.
+    if [ -f /var/lib/samba/private/sam.ldb ]; then
+        echo "It seems Sinad is already provisioned."
+        read -p 'Do you want to continue to provision it anyway? [y|n] ' YN
+        case $YN in
+            [Yy]*)
+                provision_sinad
+                ;;
+            *)
+                echo Abort provisioning
+                ;;
+        esac
+    else
+        provision_sinad
+    fi
 }
 provision_sinad () {
     # Get samba admin password.
@@ -17,8 +34,7 @@ provision_sinad () {
         echo
         read -s -p 'Type samba admin password again: ' ADMINPW2
         echo
-        if [ x"$ADMINPW1" == x"$ADMINPW2" ]
-        then
+        if [ x"$ADMINPW1" == x"$ADMINPW2" ]; then
             break
         else
             echo "Passwords are not matched. Try again."
@@ -27,12 +43,10 @@ provision_sinad () {
     done
     # Get realm
     read -p 'Type realm name (eg. iorchard.lan): ' REALM
-    echo
     # Get domain from realm
     DOMAIN=${REALM%.*}
     # Get Sinad host IP address.
     read -p 'Type Sinad host IP address: ' HOST_IP
-    echo
     # Backup original config files.
     mv /etc/krb5.conf /etc/krb5.conf.orig
     mv /etc/samba/smb.conf /etc/samba/smb.conf.orig
@@ -74,8 +88,7 @@ EOF
     IP_LIST=($(hostname -I))
     for i in ${IP_LIST[*]}
     do
-        if [ x"${i}" != x"${HOST_IP}" ]
-        then
+        if [ x"${i}" != x"${HOST_IP}" ]; then
             samba-tool dns delete $HOSTNAME $REALM $HOSTNAME A $i -U administrator
             samba-tool dns delete $HOSTNAME $REALM $REALM A $i -U administrator
         fi
@@ -91,11 +104,16 @@ EOF
     chmod 0770 /srv/samba/{profiles,users}
     reload_sinad
 }
+ping_sinad () {
+    echo -n "smbd: "
+    smbcontrol smbd ping
+    echo -n "winbindd: "
+    smbcontrol winbindd ping
+}
 run_sinad () {
     while :
     do
-        if [ -f /tmp/holding_stone ]
-        then
+        if [ -f /tmp/holding_stone ]; then
             sleep 5
         else
             break
@@ -130,19 +148,19 @@ user_sinad () {
     setfacl -m "d:g:${DOMAIN}\\${USERID}:rwx" /srv/samba/users/$USERID
 }
 USAGE() {
-    echo "Usage: $0 {-h|-c|-e|-p|-r|-R|-u}" 1>&2
+    echo "Usage: $0 {-h|-c|-e|-p|-P|-r|-R|-u}" 1>&2
     echo " "
     echo "  -h  --help          Display this help message."
     echo "  -c  --clear         Clear the holding stone."
     echo "  -e  --execute       Execute command."
     echo "  -p  --provision     Provision Sinad."
+    echo "  -P  --ping          Ping Sinad daemons (smbd and winbindd)."
     echo "  -r  --run           Run Sinad."
     echo "  -R  --reload        Reload Sinad config."
     echo "  -u  --user          Create a user."
 }
 
-if [ $# -lt 1 ]
-then
+if [ $# -lt 1 ]; then
     USAGE
     exit 0
 fi
@@ -158,11 +176,15 @@ do
             break
             ;;
         -e | --execute)
-            execute_sinad $@
+            execute_sinad "$@"
             break
             ;;
         -p | --provision)
-            provision_sinad
+            check_provisioned
+            break
+            ;;
+        -P | --ping)
+            ping_sinad
             break
             ;;
         -r | --run)

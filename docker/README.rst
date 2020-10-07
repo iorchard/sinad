@@ -30,30 +30,46 @@ Run sinad container with --cap-add SYS_ADMIN option.::
       --volume srv_samba:/srv/samba \
       sinad
 
+Put sinad command in .bash_aliases.::
+
+   $ vi ~/.bash_aliases
+   alias sinad="docker exec -it sinad sinad"
+   $ source ~/.bash_aliases
 
 Provision
 ------------
 
-If this is the first time to run sinad, you need to provision the sinad.
+If this is the first time to run sinad, you need to provision it.
 If you've already done it before, you do not need to provision it since
 your settings are preserved in docker volumes.
 
 Provision sinad.::
 
-   $ docker exec -it sinad /sinad.sh --provision
-   Realm:  <your realm>
-   Domain [<domain>]: <your domain>
-   Server Role (dc, member, standalone) [dc]:
-   DNS backend (SAMBA_INTERNAL, BIND9_FLATFILE, BIND9_DLZ, NONE) [SAMBA_INTERNAL]:
-   DNS forwarder IP address (write 'none' to disable forwarding) [8.8.8.8]:
-   Administrator password:
-   Retype password:
+   $ sinad --provision
+   Type samba admin password: <admin_password>
+   Type samba admin password again: <admin_password>
+   Type realm name (eg. iorchard.lan): <realm>
+   Type Sinad host IP address: <host_ip>
+   ...
+   DOMAIN SID:            S-1-5-21-442372980-669482684-1411862968
+   Remove ip addresses from DNS except <host_ip>
+   Password for [IORCHARD\administrator]: <admin_password>
+   Record deleted successfully
+   ...
+   Grant SeDiskOperatorPrivilege to BUILTIN\Administrators.
+   Enter administrator's password:
+   Successfully granted rights.
+
+You may need to enter <admin_password> several times when removing ip
+addresses from DNS. It depends on how many ip addresses are in Sinad host.
 
 Status
 --------
 
 Check the status of sinad.::
 
-   $ docker exec sinad /sinad.sh --status
+   $ sinad --ping
+   smbd: PONG from pid xxx
+   winbindd: PONG from pid xxx
 
 
