@@ -179,6 +179,10 @@ do
             execute_sinad "$@"
             break
             ;;
+        -h | --help)
+            USAGE
+            break
+            ;;
         -p | --provision)
             check_provisioned
             break
